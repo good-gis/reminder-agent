@@ -1,0 +1,24 @@
+{
+  "name": "reminder-mcp-agent",
+  "version": "1.0.0",
+  "description": "Task reminder agent with MCP server for Claude",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start:server": "node dist/mcp-server.js",
+    "start:agent": "node dist/agent.js",
+    "dev:server": "tsx src/mcp-server.ts",
+    "dev:agent": "tsx src/agent.ts"
+  },
+  "dependencies": {
+    "openai": "^4.73.0",
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "node-cron": "^3.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/node-cron": "^3.0.11",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0"
+  }
+}
