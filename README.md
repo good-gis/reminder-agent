@@ -273,4 +273,4 @@ MIT
 
 ---
 
-Made with ❤️ and 🤖
+✨ Made with ❤️ by [good-gis](https://github.com/good-gis/) ✨
