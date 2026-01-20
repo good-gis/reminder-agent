@@ -1,13 +1,17 @@
-# 🔔 Reminder Agent - Планировщик задач с MCP для OpenAI
+# 🔔 Reminder Agent - Планировщик задач с MCP
 
-Агент для управления задачами, работающий 24/7 и предоставляющий сводки через OpenAI API.
+Агент для управления задачами, работающий 24/7 и предоставляющий сводки через OpenAI-совместимый API.
+
+Поддерживает:
+- **OpenAI API** (GPT-4, GPT-4o-mini и др.)
+- **Локальные LLM** через LM Studio, Ollama, LocalAI и другие OpenAI-совместимые серверы
 
 ## Архитектура
 
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌──────────────┐
-│   OpenAI API    │◄────│   MCP Server    │◄────│  tasks.json  │
-│   (Агент)       │     │   (reminder)    │     │              │
+│  LLM API        │◄────│   MCP Server    │◄────│  tasks.json  │
+│  (OpenAI/Local) │     │   (reminder)    │     │              │
 └────────┬────────┘     └─────────────────┘     └──────────────┘
          │
          ▼
@@ -25,10 +29,17 @@
 npm install
 ```
 
-### 2. Настройка API ключа
+### 2. Настройка LLM
 
+**Вариант A: OpenAI API**
 ```bash
 export OPENAI_API_KEY=your-api-key-here
+```
+
+**Вариант B: Локальная LLM (LM Studio, Ollama и др.)**
+```bash
+export LLM_BASE_URL=http://127.0.0.1:1234/v1  # URL вашего локального сервера
+export LLM_MODEL=your-model-name               # опционально
 ```
 
 ### 3. Сборка
@@ -154,9 +165,24 @@ interface Task {
 
 | Переменная | Описание | По умолчанию |
 |------------|----------|--------------|
-| `OPENAI_API_KEY` | API ключ OpenAI | *обязателен* |
+| `OPENAI_API_KEY` | API ключ OpenAI | *обязателен для OpenAI* |
+| `LLM_BASE_URL` | URL OpenAI-совместимого API | `https://api.openai.com/v1` |
+| `LLM_MODEL` | Название модели | `gpt-4o-mini` |
+| `LLM_API_KEY` | API ключ (альтернатива OPENAI_API_KEY) | — |
 | `REMINDER_CRON` | Расписание уведомлений (cron) | `*/30 * * * *` |
 | `TASKS_FILE` | Путь к файлу задач | `data/tasks.json` |
+
+### Примеры конфигурации
+
+**LM Studio:**
+```bash
+LLM_BASE_URL=http://127.0.0.1:1234/v1 node dist/agent.js interactive
+```
+
+**Ollama:**
+```bash
+LLM_BASE_URL=http://127.0.0.1:11434/v1 LLM_MODEL=llama3 node dist/agent.js interactive
+```
 
 ## Использование как MCP сервер
 
