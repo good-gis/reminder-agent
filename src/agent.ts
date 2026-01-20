@@ -14,8 +14,11 @@ const CONFIG = {
   // Можно изменить на '0 9 * * *' для ежедневного уведомления в 9:00
   REMINDER_CRON: process.env.REMINDER_CRON || '*/30 * * * *',
 
-  // Модель OpenAI
-  MODEL: 'gpt-4o-mini',
+  // LLM конфигурация
+  // Для локальной LLM (LM Studio): LLM_BASE_URL=http://127.0.0.1:1234/v1
+  LLM_BASE_URL: process.env.LLM_BASE_URL || undefined, // undefined = OpenAI по умолчанию
+  LLM_MODEL: process.env.LLM_MODEL || 'gpt-4o-mini',
+  LLM_API_KEY: process.env.LLM_API_KEY || process.env.OPENAI_API_KEY || 'lm-studio', // для локальной LLM можно любой
 
   // Путь к MCP серверу
   MCP_SERVER_PATH: join(__dirname, '../dist/mcp-server.js'),
@@ -177,15 +180,24 @@ class MCPClient {
   }
 }
 
-// Класс агента с OpenAI
+// Класс агента с OpenAI-совместимым API
 class ReminderAgent {
   private openai: OpenAI;
   private mcpClient: MCPClient;
   private tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [];
 
   constructor() {
-    this.openai = new OpenAI();
+    this.openai = new OpenAI({
+      apiKey: CONFIG.LLM_API_KEY,
+      baseURL: CONFIG.LLM_BASE_URL,
+    });
     this.mcpClient = new MCPClient();
+
+    if (CONFIG.LLM_BASE_URL) {
+      log(`Используется LLM: ${CONFIG.LLM_BASE_URL} (модель: ${CONFIG.LLM_MODEL})`, colors.cyan);
+    } else {
+      log(`Используется OpenAI API (модель: ${CONFIG.LLM_MODEL})`, colors.cyan);
+    }
   }
 
   async initialize(): Promise<void> {
@@ -232,7 +244,7 @@ class ReminderAgent {
     ];
 
     let response = await this.openai.chat.completions.create({
-      model: CONFIG.MODEL,
+      model: CONFIG.LLM_MODEL,
       max_tokens: 2048,
       tools: this.tools,
       messages
@@ -263,7 +275,7 @@ class ReminderAgent {
       }
 
       response = await this.openai.chat.completions.create({
-        model: CONFIG.MODEL,
+        model: CONFIG.LLM_MODEL,
         max_tokens: 2048,
         tools: this.tools,
         messages
@@ -324,7 +336,7 @@ class ReminderAgent {
     ];
 
     let response = await this.openai.chat.completions.create({
-      model: CONFIG.MODEL,
+      model: CONFIG.LLM_MODEL,
       max_tokens: 2048,
       tools: this.tools,
       messages
@@ -353,7 +365,7 @@ class ReminderAgent {
       }
 
       response = await this.openai.chat.completions.create({
-        model: CONFIG.MODEL,
+        model: CONFIG.LLM_MODEL,
         max_tokens: 2048,
         tools: this.tools,
         messages
@@ -372,11 +384,14 @@ class ReminderAgent {
 async function main() {
   logHeader('🔔 Reminder Agent - Планировщик задач с OpenAI');
 
-  // Проверка API ключа
-  if (!process.env.OPENAI_API_KEY) {
-    log('ОШИБКА: Не установлен OPENAI_API_KEY', colors.red);
-    console.log('\nУстановите переменную окружения:');
+  // Проверка API ключа (не нужен для локальной LLM)
+  if (!process.env.LLM_BASE_URL && !process.env.OPENAI_API_KEY && !process.env.LLM_API_KEY) {
+    log('ОШИБКА: Не установлен API ключ', colors.red);
+    console.log('\nДля OpenAI установите переменную окружения:');
     console.log('  export OPENAI_API_KEY=your-api-key-here\n');
+    console.log('Для локальной LLM (LM Studio) установите:');
+    console.log('  export LLM_BASE_URL=http://127.0.0.1:1234/v1');
+    console.log('  export LLM_MODEL=your-model-name  # опционально\n');
     process.exit(1);
   }
 
