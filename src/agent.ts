@@ -16,9 +16,18 @@ const CONFIG = {
 
   // LLM конфигурация
   // Для локальной LLM (LM Studio): LLM_BASE_URL=http://127.0.0.1:1234/v1
+  // Для Ollama: LLM_BASE_URL=http://localhost:11434/v1
   LLM_BASE_URL: process.env.LLM_BASE_URL || undefined, // undefined = OpenAI по умолчанию
   LLM_MODEL: process.env.LLM_MODEL || 'gpt-4o-mini',
   LLM_API_KEY: process.env.LLM_API_KEY || process.env.OPENAI_API_KEY || 'lm-studio', // для локальной LLM можно любой
+
+  // Параметры генерации
+  // Температура: 0.0-1.0 (меньше = более детерминированный, больше = более творческий)
+  LLM_TEMPERATURE: parseFloat(process.env.LLM_TEMPERATURE || '0.3'),
+  // Максимальное количество токенов в ответе
+  LLM_MAX_TOKENS: parseInt(process.env.LLM_MAX_TOKENS || '2048', 10),
+  // Top-p (nucleus sampling): 0.0-1.0
+  LLM_TOP_P: process.env.LLM_TOP_P ? parseFloat(process.env.LLM_TOP_P) : undefined,
 
   // Путь к MCP серверу
   MCP_SERVER_PATH: join(__dirname, '../dist/mcp-server.js'),
@@ -194,10 +203,11 @@ class ReminderAgent {
     this.mcpClient = new MCPClient();
 
     if (CONFIG.LLM_BASE_URL) {
-      log(`Используется LLM: ${CONFIG.LLM_BASE_URL} (модель: ${CONFIG.LLM_MODEL})`, colors.cyan);
+      log(`Используется LLM: ${CONFIG.LLM_BASE_URL}`, colors.cyan);
     } else {
-      log(`Используется OpenAI API (модель: ${CONFIG.LLM_MODEL})`, colors.cyan);
+      log(`Используется OpenAI API`, colors.cyan);
     }
+    log(`Модель: ${CONFIG.LLM_MODEL}, temp: ${CONFIG.LLM_TEMPERATURE}, max_tokens: ${CONFIG.LLM_MAX_TOKENS}${CONFIG.LLM_TOP_P ? `, top_p: ${CONFIG.LLM_TOP_P}` : ''}`, colors.cyan);
   }
 
   async initialize(): Promise<void> {
@@ -220,17 +230,21 @@ class ReminderAgent {
   }
 
   async getSummary(): Promise<string> {
-    const systemPrompt = `Ты - помощник по управлению задачами. У тебя есть доступ к инструментам для работы с задачами.
+    const systemPrompt = `Ты - помощник по управлению задачами. У тебя есть инструменты для работы с задачами.
 
-Твоя задача - предоставить краткую и информативную сводку по текущим задачам пользователя.
+ВАЖНО: Чтобы получить информацию о задачах, ты ДОЛЖЕН вызвать инструмент get_task_summary.
 
-При создании сводки:
-1. Сначала получи общую сводку через get_task_summary
-2. Если есть просроченные или критические задачи - выдели их особо
-3. Покажи задачи на сегодня
-4. Дай краткие рекомендации по приоритетам
+Порядок действий:
+1. Вызови get_task_summary чтобы получить данные
+2. Проанализируй полученные данные
+3. Составь краткий отчёт
 
-Отвечай на русском языке. Будь кратким, но информативным.`;
+Формат отчёта:
+- Просроченные задачи (если есть) - ВАЖНО
+- Задачи на сегодня
+- Рекомендации
+
+Отвечай на русском. Будь кратким.`;
 
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
       {
@@ -245,7 +259,9 @@ class ReminderAgent {
 
     let response = await this.openai.chat.completions.create({
       model: CONFIG.LLM_MODEL,
-      max_tokens: 2048,
+      max_tokens: CONFIG.LLM_MAX_TOKENS,
+      temperature: CONFIG.LLM_TEMPERATURE,
+      top_p: CONFIG.LLM_TOP_P,
       tools: this.tools,
       messages
     });
@@ -276,7 +292,9 @@ class ReminderAgent {
 
       response = await this.openai.chat.completions.create({
         model: CONFIG.LLM_MODEL,
-        max_tokens: 2048,
+        max_tokens: CONFIG.LLM_MAX_TOKENS,
+        temperature: CONFIG.LLM_TEMPERATURE,
+        top_p: CONFIG.LLM_TOP_P,
         tools: this.tools,
         messages
       });
@@ -327,8 +345,19 @@ class ReminderAgent {
   }
 
   async chat(userMessage: string): Promise<string> {
-    const systemPrompt = `Ты - помощник по управлению задачами. У тебя есть доступ к инструментам для работы с задачами.
-Отвечай на русском языке. Будь полезным и кратким.`;
+    const systemPrompt = `Ты - помощник по управлению задачами.
+
+Доступные инструменты:
+- get_tasks: получить все задачи
+- get_task_summary: получить сводку
+- add_task: добавить задачу
+- update_task_status: обновить статус
+- delete_task: удалить задачу
+- get_overdue_tasks: просроченные задачи
+- get_today_tasks: задачи на сегодня
+
+ВАЖНО: Используй инструменты для получения и изменения данных.
+Отвечай на русском. Кратко.`;
 
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
       { role: 'system', content: systemPrompt },
@@ -337,7 +366,9 @@ class ReminderAgent {
 
     let response = await this.openai.chat.completions.create({
       model: CONFIG.LLM_MODEL,
-      max_tokens: 2048,
+      max_tokens: CONFIG.LLM_MAX_TOKENS,
+      temperature: CONFIG.LLM_TEMPERATURE,
+      top_p: CONFIG.LLM_TOP_P,
       tools: this.tools,
       messages
     });
@@ -366,7 +397,9 @@ class ReminderAgent {
 
       response = await this.openai.chat.completions.create({
         model: CONFIG.LLM_MODEL,
-        max_tokens: 2048,
+        max_tokens: CONFIG.LLM_MAX_TOKENS,
+        temperature: CONFIG.LLM_TEMPERATURE,
+        top_p: CONFIG.LLM_TOP_P,
         tools: this.tools,
         messages
       });
