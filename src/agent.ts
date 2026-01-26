@@ -2,10 +2,127 @@ import OpenAI from 'openai';
 import { spawn, ChildProcess } from 'child_process';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { readFileSync, existsSync } from 'fs';
 import cron from 'node-cron';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+// Интерфейс профиля пользователя
+interface UserProfile {
+  name: string;
+  workSchedule?: {
+    startHour: number;
+    endHour: number;
+    workDays: string[];
+    timezone?: string;
+  };
+  preferences?: {
+    communicationStyle?: string;
+    language?: string;
+    notificationTone?: string;
+  };
+  habits?: {
+    productiveHours?: string;
+    lowEnergyHours?: string;
+    preferredBreakTime?: string;
+  };
+  priorities?: {
+    areas?: string[];
+    currentFocus?: string;
+  };
+  reminders?: {
+    overdueEmphasis?: string;
+    encouragement?: boolean;
+    includeMotivation?: boolean;
+  };
+  context?: {
+    role?: string;
+    notes?: string;
+  };
+}
+
+// Загрузка профиля пользователя
+function loadUserProfile(): UserProfile | null {
+  const profilePath = process.env.PROFILE_FILE || join(__dirname, '../data/profile.json');
+
+  if (!existsSync(profilePath)) {
+    return null;
+  }
+
+  try {
+    const data = readFileSync(profilePath, 'utf-8');
+    return JSON.parse(data) as UserProfile;
+  } catch (error) {
+    console.error(`Ошибка загрузки профиля: ${error}`);
+    return null;
+  }
+}
+
+// Генерация контекста персонализации для промптов
+function buildPersonalizationContext(profile: UserProfile | null): string {
+  if (!profile) {
+    return '';
+  }
+
+  const parts: string[] = [];
+
+  parts.push(`\n--- ПЕРСОНАЛИЗАЦИЯ ---`);
+  parts.push(`Пользователь: ${profile.name}`);
+
+  if (profile.context?.role) {
+    parts.push(`Роль: ${profile.context.role}`);
+  }
+
+  if (profile.workSchedule) {
+    parts.push(`Рабочие часы: ${profile.workSchedule.startHour}:00 - ${profile.workSchedule.endHour}:00`);
+    parts.push(`Рабочие дни: ${profile.workSchedule.workDays.join(', ')}`);
+  }
+
+  if (profile.habits) {
+    if (profile.habits.productiveHours) {
+      parts.push(`Продуктивные часы: ${profile.habits.productiveHours}`);
+    }
+    if (profile.habits.lowEnergyHours) {
+      parts.push(`Часы низкой энергии: ${profile.habits.lowEnergyHours}`);
+    }
+  }
+
+  if (profile.priorities) {
+    if (profile.priorities.areas?.length) {
+      parts.push(`Приоритетные области: ${profile.priorities.areas.join(', ')}`);
+    }
+    if (profile.priorities.currentFocus) {
+      parts.push(`Текущий фокус: ${profile.priorities.currentFocus}`);
+    }
+  }
+
+  if (profile.preferences) {
+    if (profile.preferences.communicationStyle) {
+      parts.push(`Стиль общения: ${profile.preferences.communicationStyle}`);
+    }
+    if (profile.preferences.notificationTone) {
+      parts.push(`Тон уведомлений: ${profile.preferences.notificationTone}`);
+    }
+  }
+
+  if (profile.reminders) {
+    if (profile.reminders.encouragement) {
+      parts.push(`Включить поддержку и мотивацию в ответы`);
+    }
+    if (profile.reminders.overdueEmphasis === 'высокий') {
+      parts.push(`Особо акцентировать внимание на просроченных задачах`);
+    }
+  }
+
+  if (profile.context?.notes) {
+    parts.push(`Заметки: ${profile.context.notes}`);
+  }
+
+  parts.push(`--- КОНЕЦ ПЕРСОНАЛИЗАЦИИ ---\n`);
+
+  return parts.join('\n');
+}
 
 // Конфигурация
 const CONFIG = {
@@ -194,6 +311,8 @@ class ReminderAgent {
   private openai: OpenAI;
   private mcpClient: MCPClient;
   private tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [];
+  private userProfile: UserProfile | null = null;
+  private personalizationContext: string = '';
 
   constructor() {
     this.openai = new OpenAI({
@@ -201,6 +320,16 @@ class ReminderAgent {
       baseURL: CONFIG.LLM_BASE_URL,
     });
     this.mcpClient = new MCPClient();
+
+    // Загрузка профиля пользователя
+    this.userProfile = loadUserProfile();
+    this.personalizationContext = buildPersonalizationContext(this.userProfile);
+
+    if (this.userProfile) {
+      log(`Профиль загружен: ${this.userProfile.name}`, colors.green);
+    } else {
+      log(`Профиль не найден, используются настройки по умолчанию`, colors.yellow);
+    }
 
     if (CONFIG.LLM_BASE_URL) {
       log(`Используется LLM: ${CONFIG.LLM_BASE_URL}`, colors.cyan);
@@ -230,21 +359,25 @@ class ReminderAgent {
   }
 
   async getSummary(): Promise<string> {
-    const systemPrompt = `Ты - помощник по управлению задачами. У тебя есть инструменты для работы с задачами.
+    const userName = this.userProfile?.name || 'пользователь';
 
+    const systemPrompt = `Ты - персональный помощник по управлению задачами для ${userName}. У тебя есть инструменты для работы с задачами.
+${this.personalizationContext}
 ВАЖНО: Чтобы получить информацию о задачах, ты ДОЛЖЕН вызвать инструмент get_task_summary.
 
 Порядок действий:
 1. Вызови get_task_summary чтобы получить данные
-2. Проанализируй полученные данные
-3. Составь краткий отчёт
+2. Проанализируй полученные данные с учётом персонализации пользователя
+3. Составь краткий персонализированный отчёт
 
 Формат отчёта:
+- Приветствие с именем пользователя
 - Просроченные задачи (если есть) - ВАЖНО
 - Задачи на сегодня
-- Рекомендации
+- Рекомендации с учётом продуктивных часов и приоритетов пользователя
+${this.userProfile?.reminders?.includeMotivation ? '- Краткая мотивация в конце' : ''}
 
-Отвечай на русском. Будь кратким.`;
+Отвечай на русском. Будь кратким, но персональным.`;
 
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
       {
@@ -345,8 +478,10 @@ class ReminderAgent {
   }
 
   async chat(userMessage: string): Promise<string> {
-    const systemPrompt = `Ты - помощник по управлению задачами.
+    const userName = this.userProfile?.name || 'пользователь';
 
+    const systemPrompt = `Ты - персональный помощник по управлению задачами для ${userName}.
+${this.personalizationContext}
 Доступные инструменты:
 - get_tasks: получить все задачи
 - get_task_summary: получить сводку
@@ -357,7 +492,8 @@ class ReminderAgent {
 - get_today_tasks: задачи на сегодня
 
 ВАЖНО: Используй инструменты для получения и изменения данных.
-Отвечай на русском. Кратко.`;
+Учитывай персонализацию при ответах (продуктивные часы, приоритеты, стиль общения).
+Отвечай на русском. Кратко, но дружелюбно.`;
 
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
       { role: 'system', content: systemPrompt },

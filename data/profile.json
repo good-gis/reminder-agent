@@ -1,0 +1,32 @@
+{
+  "name": "Иван",
+  "workSchedule": {
+    "startHour": 9,
+    "endHour": 18,
+    "workDays": ["пн", "вт", "ср", "чт", "пт"],
+    "timezone": "Europe/Moscow"
+  },
+  "preferences": {
+    "communicationStyle": "краткий и по делу",
+    "language": "русский",
+    "notificationTone": "дружелюбный, но профессиональный"
+  },
+  "habits": {
+    "productiveHours": "утро (9-12)",
+    "lowEnergyHours": "после обеда (14-16)",
+    "preferredBreakTime": "13:00-14:00"
+  },
+  "priorities": {
+    "areas": ["работа", "здоровье", "обучение"],
+    "currentFocus": "продуктивность"
+  },
+  "reminders": {
+    "overdueEmphasis": "высокий",
+    "encouragement": true,
+    "includeMotivation": true
+  },
+  "context": {
+    "role": "разработчик",
+    "notes": "Добавьте сюда любые заметки о себе, которые помогут агенту лучше понимать контекст"
+  }
+}
